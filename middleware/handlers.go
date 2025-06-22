@@ -47,7 +47,7 @@ func CreateStock(w http.ResponseWriter, r *http.Request) {
 		log.Fatal("Error decoding request body. %v", err)
 	}
 
-	insertID := InsertStock(stock)
+	insertID := insertStock(stock)
 
 	res := response{
 		ID:      insertID,
@@ -113,7 +113,7 @@ func UpdateStock(w http.ResponseWriter, r *http.Request) {
 
 func DeleteStock(w http.ResponseWriter, r *http.Request) {
 	params := mux.Vars(r)
-	id, err := strconv.Atio(params["id"])
+	id, err := strconv.Atoi(params["id"])
 	fmt.Println("Deleting stock with ID:", id)
 	if err != nil {
 		log.Fatal("Error converting ID to integer. %v", err)
@@ -129,4 +129,90 @@ func DeleteStock(w http.ResponseWriter, r *http.Request) {
 	}
 	json.NewEncoder(w).Encode(res)
 	fmt.Println("Stock deleted successfully with ID:", id)
+}
+
+func insertStock(stock models.Stock) int64 {
+	db := CreateConnection()
+	defer db.Close()
+	sqlStatement := "INSERT INTO stocks (name, price, company) VALUES ($1, $2, $3) RETURNING id"
+	var id int64
+	err := db.QueryRow(sqlStatement, stock.Name, stock.Price, stock.Company).Scan(&id)
+	if err != nil {
+		log.Fatal("Error inserting stock into database. %v", err)
+	}
+	fmt.Println("Inserted stock with ID:", id)
+	return id
+}
+
+func getStock(id int64) (models.Stock, error) {
+	db := CreateConnection()
+	defer db.Close()
+	var stock models.Stock
+	sqlStatement := "SELECT stockid, name, price, company FROM stocks WHERE stockid=$1"
+	err := db.QueryRow(sqlStatement, id).Scan(&stock.ID, &stock.Name, &stock.Price, &stock.Company)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return models.Stock{}, fmt.Errorf("no stock found with ID %d", id)
+		}
+		log.Fatal("Error fetching stock from database. %v", err)
+	}
+	fmt.Println("Fetched stock with ID:", id)
+	return stock, nil
+}
+
+func getAllStocks() ([]models.Stock, error) {
+	db := CreateConnection()
+	defer db.Close()
+	sqlStatement := "SELECT * FROM stocks"
+	var stocks []models.Stock
+	fmt.Println("Fetching all stocks from database")
+	rows, err := db.Query(sqlStatement)
+
+	if err != nil {
+		log.Fatal("Error fetching all stocks from database. %v", err)
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var stock models.Stock
+		err := rows.Scan(&stock.ID, &stock.Name, &stock.Price, &stock.Company)
+		if err != nil {
+			log.Fatal("Error scanning row. %v", err)
+		}
+		stocks = append(stocks, stock)
+		fmt.Println("Fetched stock:", stock)
+	}
+	return stocks, err
+}
+
+func updateStock(id int64, stock models.Stock) int64 {
+	db := CreateConnection()
+	defer db.Close()
+	sqlStatement := "UPDATE stocks SET name=$1, price=$2, company=$3 WHERE stockid=$4"
+	res, err := db.Exec(sqlStatement, stock.Name, stock.Price, stock.Company, id)
+	if err != nil {
+		log.Fatal("Error updating stock in database. %v", err)
+	}
+	rowsAffected, err := res.RowsAffected()
+	if err != nil {
+		log.Fatal("Error getting rows affected. %v", err)
+	}
+	fmt.Println("Updated stock with ID:", id, "Rows affected:", rowsAffected)
+	return rowsAffected
+}
+
+func deleteStock(id int64) int64 {
+	db := CreateConnection()
+	defer db.Close()
+	sqlStatement := "DELETE FROM stocks WHERE stockid=$1"
+	res, err := db.Exec(sqlStatement, id)
+	if err != nil {
+		log.Fatal("Error deleting stock from database. %v", err)
+	}
+	rowsAffected, err := res.RowsAffected()
+	if err != nil {
+		log.Fatal("Error getting rows affected. %v", err)
+	}
+	fmt.Println("Deleted stock with ID:", id, "Rows affected:", rowsAffected)
+	return rowsAffected
 }
